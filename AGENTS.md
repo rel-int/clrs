@@ -2,78 +2,82 @@
 
 ## What
 
-This is DeepMind's [CLRS Algorithmic Reasoning Benchmark](README.md), forked to `toumix/clrs` as
-the beachhead for [discopy#678](https://github.com/discopy/discopy/issues/678): running CLRS tasks
-as string diagrams, evaluated by a DisCoPy functor. See [PR #1](https://github.com/toumix/clrs/pull/1)
-(`goi/`) for the shape of that work.
+DeepMind's [CLRS Algorithmic Reasoning Benchmark](README.md), forked to `rel-int/clrs` as the
+beachhead for [discopy#678](https://github.com/discopy/discopy/issues/678): CLRS tasks run as
+string diagrams whose wiring *is* the algorithm, evaluated by a DisCoPy functor with JAX arrays on
+the wires, and only the boxes learned. The experiment and its results are [`goi/`](goi/README.md).
+It moved here from `toumix/clrs` on 2026-09-08, history preserved (its pull requests #1 and #2).
+
+## Where
+
+- [`goi/`](goi/) — the experiment: `adapter.py` samples tasks through `clrs._src.samplers` with
+  `stubs.py` standing in for TensorFlow, one module per task (`minimum`, `sort`, `lcs`), the
+  runners `python -m goi.run_<task>`, and [`lake.py`](goi/lake.py), the one writer and reader of
+  runs on the data lake. [`goi/README.md`](goi/README.md) carries every number with its protocol.
+- `clrs/` — upstream, untouched. Nothing of the experiment goes there.
+
+## Infra: one contract, read it before touching data or compute
+
+Credentials, the data lake and remote compute are documented once, in
+[`rel-int/infra` → `agents/RELINT-AGENTS.md`](https://github.com/rel-int/infra/blob/main/agents/RELINT-AGENTS.md).
+Read it first; do not copy it here. From a sandbox:
+
+```sh
+cat ../infra/agents/RELINT-AGENTS.md 2>/dev/null || curl -sSf \
+  -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" \
+  https://api.github.com/repos/rel-int/infra/contents/agents/RELINT-AGENTS.md
+```
+
+If neither works, stop and say so. Never guess a credential, a bucket or a path.
+
+A provisioned sandbox holds `RELINT_TOKEN` in its environment and nothing else. The one line
+this repo needs, run once per session (it is also the refresh):
+
+```sh
+curl -H "Authorization: Bearer $RELINT_TOKEN" https://data.rel-int.ai/setup.py | uv run - --scratch
+source ~/.config/relint/env
+```
+
+What the contract does not say and this repo measured (2026-09-08, from a Claude Code sandbox):
+
+- A scratch key starts with `$RELINT_SCRATCH_PREFIX`, the caller's e-mail with every character
+  outside `[a-zA-Z0-9._-]` replaced by `_` (`scratch/alexis_rel-int.ai/`), which the doctor exports
+  only with `--scratch`. Any other prefix is `AccessDenied`, indistinguishable from a real refusal.
+- `--append` credentials are rejected by R2 on every request, reads included
+  (`InvalidArgument: X-Amz-Security-Token`), so landing under `raw/` is not possible today. Use
+  scratch, or `--write` if your row in `users.yaml` carries `data:write`.
+- The doctor overwrites `~/.config/relint/env` with the last credential requested: one shell,
+  one bucket. `goi.lake` reads `RELINT_BUCKET` to know which it has.
 
 ## Running experiments
 
-PR #1's whole scorecard — three tasks, three seeds each, `pytest`/`python -m goi.run_<task>` —
-ran on **CPU inside the sandbox, no Modal, no GPU** ("per the standing ruling"). Prefer that path:
-it needs nothing external, nothing to authenticate, and nothing to go wrong. Reach for Modal only
-when a run genuinely needs GPU or wall-clock the sandbox can't give it, and read the rest of this
-file first — the credential story around it is not settled, and getting it wrong is how agents
-end up inventing infra that `rel-int/infra`'s own team then has to clean up after.
+Every table in [`goi/README.md`](goi/README.md) is minutes of CPU, so the default is the sandbox
+itself, nothing remote:
 
-### Why this file is blunt about that
+```sh
+uv venv --python 3.12 .venv && . .venv/bin/activate    # discopy main needs 3.12
+uv pip install numpy jax attrs absl-py chex dm-haiku optax ml_collections \
+    six opt-einsum matplotlib pytest boto3 "git+https://github.com/discopy/discopy@main"
+python -m pytest goi/minimum_test.py goi/sort_test.py goi/lake_test.py
+python -u -m goi.run_minimum          # -u: a buffered run looks dead for its whole duration
+```
 
-Agents working across this org have already hallucinated missing checkpoints and invented bucket
-deployments once — it's on record in `toumix/memory`'s `OTHERS/0x0f0f0f.md` as a standing
-complaint from the person who owns `rel-int/infra` (an org Cloudflare Super Administrator, with
-curator write access to the actual data lake). His `CLAUDE.md` there is unambiguous about why:
-never mint a credential yourself, never invent a bucket or a path, never commit a dataset or a
-checkpoint to git. This file exists so an agent here has somewhere to read that *before* running
-into it, rather than after.
+Every runner ends by saving each seed's scorecard and parameters with `goi.lake`, to
+`$RELINT_SCRATCH_PREFIX/clrs/<git sha>/<task>/seed-<k>/` when the shell carries a credential and
+to nowhere, saying so, when it does not. Scratch is deleted after thirty days; a result worth
+keeping is landed by hand at `weights/clrs/<task>/<date>/seed-<k>/` with a `--write` credential,
+and the date is the version key, as `rel-int/infra`'s `datasets.toml` keys everything.
 
-### Compute: Modal is reachable, with one gotcha
+For a run that needs a GPU or more wall-clock than a sandbox gives: marimohub
+(`MARIMOHUB_TOKEN`, delivered by the exchange above) runs notebooks, and Modal runs scripts —
+`MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` in the environment and `modal[api-proxy-support]` installed,
+as `toumix/ARC-AGI`'s launcher does. Neither has been needed here yet.
 
-- `api.modal.com` is on the sandbox's default egress allowlist, but the `modal` SDK needs the
-  `api-proxy-support` extra to actually use it — `pip install 'modal[api-proxy-support]'` (or add
-  it to `requirements/`). Without it, the SDK fails with a misleading
-  `Could not connect to the Modal server`; the real cause, two frames down, is
-  `ModuleNotFoundError: python_socks`.
-- `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` and `MODAL_ENVIRONMENT=notebooks` need to already be in
-  the session's own environment — there is no `.env` and no in-repo credential, and none should
-  ever be added. If they're missing, ask USER to set them on the Claude Code cloud environment
-  rather than inventing or hardcoding a token. `toumix/ARC-AGI` already runs this way (its own
-  launcher reads `MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` from the environment) — mirror that rather
-  than reinventing it.
-- `modal.com`, `*.modal.run` and `*.modal.host` are blocked at the egress proxy; `modal run`
-  doesn't need them from inside the sandbox.
+## Never
 
-### Storage: unresolved — don't freelance it
-
-There is currently **no machine credential for R2 at all**. A Modal job has no Cloudflare Access
-identity, and there is no sanctioned way today for one to read or write the data lake. See
-[rel-int/infra#4](https://github.com/rel-int/infra/issues/4) (open) and `toumix/memory`'s
-`WORK/infra/4.md` for the live state — USER has already ruled out an MCP server and `setup.py` as
-the answer there (2026-09-02) and said a token in the session's own environment is what he does
-today, but nothing has turned that into a bucket, a script or a written rule yet. In order:
-
-1. **A run that fits in the PR needs nothing external.** PR #1 scored its whole table without
-   touching R2 — prefer that path while it holds.
-2. **If a run genuinely needs to persist something outside the PR — a checkpoint, a dataset —
-   ask USER which of infra#4's options he wants before writing any code that touches R2.** There
-   is no sanctioned recipe to copy yet; resolving that design question is USER's call, not an
-   agent's to make by building around it.
-3. **If USER has explicitly authorised the interim fast path**, it is: the shared Modal token
-   already in the environment, plus one dashboard-minted key on `rel-int-scratch` (never
-   `rel-int-data`) in a Modal Secret, accepting its 30-day life — and say so, plainly, in the PR
-   body, rather than leaving it implicit.
-4. **If reading or appending to the actual data lake is needed** (not scratch), the mechanism is
-   `rel-int/infra`'s `data.rel-int.ai/v1/creds`, a `RELINT_TOKEN` bearer exchanged for short-lived
-   (≤24h) scoped credentials — read that repo's `CLAUDE.md` in full before using it. `toumix`'s
-   own row in `packages/data-lake/users.yaml` is `data:read`, `data:append`, `hub:run` — no
-   `data:write`, so nothing done through it can delete or overwrite what's already in the lake; it
-   can only read, and append new objects under `raw/`.
-
-### Never
-
-- Never mint a long-lived R2 key, widen a Cloudflare Access policy, or touch
-  `rel-int/infra`'s `stacks/credentials.ts` admin-profile flow yourself — that repo's `CLAUDE.md`
-  is explicit that this is never a service's, or a session's, call to make.
-- Never commit a dataset, a checkpoint, or generated experiment output to this repo's git
-  history — it belongs in R2 (`raw/`, `weights/`) or nowhere.
-- Never invent a bucket or dataset path — `rel-int/infra`'s `packages/data-lake/datasets.toml` is
-  the index of what exists and where.
+- Never commit a dataset, a checkpoint, a parameter file or a run's output to git. The numbers go
+  in `goi/README.md`; the artefacts go to the lake or nowhere.
+- Never invent a bucket, a prefix or a dataset path: `rel-int/infra`'s `datasets.toml` is the
+  index of what exists and where.
+- Never mint, paste or store a credential other than `RELINT_TOKEN` in the environment; never
+  widen a scope or touch `rel-int/infra`'s credential stack to make a run pass.
