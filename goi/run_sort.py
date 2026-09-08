@@ -14,6 +14,7 @@ import time
 import numpy as np
 
 from goi import adapter
+from goi import lake
 from goi import sort
 
 SPLITS = {'val (n=16)': (16, 32, 43), 'test (n=64)': (64, 32, 44),
@@ -41,21 +42,23 @@ def experiment(seed, algorithm='insertion_sort'):
   print(f"{algorithm} seed {seed}: the reference box run through the "
         f"network is exact; {n_visits} visits collapse to {len(table)} rules")
 
-  predicate = sort.predicate_box(sort.train_predicate(oracle.visits, seed))
+  params = sort.train_predicate(oracle.visits, seed)
+  predicate = sort.predicate_box(params)
   scores = {}
   for split in SPLITS:
     scores[split] = score(predicate, split, algorithm)
     print(f"  {split}: predicate {scores[split]:.4f}")
   print(f"  ({time.time() - start:.1f}s)")
-  return scores
+  return scores, params
 
 
 def main(seeds=(0, 1, 2), algorithm='insertion_sort'):
   results = [experiment(seed, algorithm) for seed in seeds]
   print(f"\nover seeds {seeds}, mean +- std of 100 * score:")
   for split in SPLITS:
-    values = 100 * np.array([result[split] for result in results])
+    values = 100 * np.array([scores[split] for scores, _ in results])
     print(f"  {split}: {values.mean():.2f} +- {values.std():.2f}")
+  lake.save_runs(algorithm, seeds, results)
 
 
 if __name__ == '__main__':

@@ -261,18 +261,27 @@ dataset dependencies (TensorFlow, tfds) are not needed — `goi.stubs`
 registers import-time placeholders for them.
 
 ```shell
-python -m venv .venv && . .venv/bin/activate
-pip install numpy jax attrs absl-py chex dm-haiku optax ml_collections \
-    six opt-einsum matplotlib pytest
-pip install git+https://github.com/discopy/discopy@main
+uv venv --python 3.12 .venv && . .venv/bin/activate
+uv pip install numpy jax attrs absl-py chex dm-haiku optax ml_collections \
+    six opt-einsum matplotlib pytest boto3 \
+    "git+https://github.com/discopy/discopy@main"
 python -m goi.run_minimum     # ~75s per seed on CPU
 python -m goi.run_sort        # ~10min per seed on CPU
 python -m goi.run_controls    # ~15min on CPU
 python -m goi.run_endtoend         # minimum from outputs alone, ~16s per seed
 python -m goi.run_endtoend sort    # the network from outputs alone, ~5min per seed
 python -m goi.run_lcs              # lcs_length, with the truth-table diagnostics
-python -m pytest goi/minimum_test.py goi/sort_test.py
+python -m pytest goi/minimum_test.py goi/sort_test.py goi/lake_test.py
 ```
+
+Each runner ends by saving every seed's scorecard and trained parameters
+to the rel-int data lake through `goi.lake` — one `scores.json` and one
+`params.npz` under the caller's scratch prefix, keyed by the git sha of
+the code, the task and the seed — when the shell carries a lake credential,
+and prints where they went; without one it says the runs stayed in the
+shell and gives the one line that changes that. [`AGENTS.md`](../AGENTS.md)
+says how a session gets the credential and where a run worth keeping is
+landed.
 
 ## Next, per the staged plan
 

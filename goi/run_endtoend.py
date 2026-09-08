@@ -15,6 +15,7 @@ import numpy as np
 
 from goi import adapter
 from goi import endtoend
+from goi import lake
 from goi import minimum
 from goi.run_minimum import SPLITS, per_visit_accuracy, score
 
@@ -37,7 +38,7 @@ def experiment(seed):
     scores[split] = score(box, split)
     print(f"  {split}: {scores[split]:.4f}")
   print(f"  ({time.time() - start:.1f}s)")
-  return scores
+  return scores, params
 
 
 def experiment_sort(seed):
@@ -56,16 +57,17 @@ def experiment_sort(seed):
     scores[split] = run_sort.score(box, split)
     print(f"  {split}: {scores[split]:.4f}")
   print(f"  seed {seed} ({time.time() - start:.1f}s)")
-  return scores
+  return scores, params
 
 
 def main(seeds=(0, 1, 2), algorithm='minimum'):
   run = experiment if algorithm == 'minimum' else experiment_sort
   results = [run(seed) for seed in seeds]
   print(f"\nover seeds {seeds}, mean +- std of 100 * score:")
-  for split in results[0]:
-    values = 100 * np.array([result[split] for result in results])
+  for split in results[0][0]:
+    values = 100 * np.array([scores[split] for scores, _ in results])
     print(f"  {split}: {values.mean():.2f} +- {values.std():.2f}")
+  lake.save_runs(f"{algorithm}-endtoend", seeds, results)
 
 
 if __name__ == '__main__':

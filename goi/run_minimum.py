@@ -15,6 +15,7 @@ import time
 import numpy as np
 
 from goi import adapter
+from goi import lake
 from goi import minimum
 
 SPLITS = {'val (n=16)': (16, 32, 43), 'test (n=64)': (64, 32, 44),
@@ -59,10 +60,10 @@ def experiment(seed):
   print(f"seed {seed}: the reference box run through the diagram is exact; "
         f"{n_visits} visits collapse to {len(table)} rules")
 
-  predicate = minimum.predicate_box(
-      minimum.train_predicate(oracle.visits, seed))
-  bottleneck = minimum.bottleneck_box(
-      minimum.train_bottleneck(oracle.visits, seed))
+  predicate_params = minimum.train_predicate(oracle.visits, seed)
+  bottleneck_params = minimum.train_bottleneck(oracle.visits, seed)
+  predicate = minimum.predicate_box(predicate_params)
+  bottleneck = minimum.bottleneck_box(bottleneck_params)
   accuracy = per_visit_accuracy(predicate, 'wide test (n=64)')
   print(f"  per-visit accuracy of the predicate on n=64 traffic: "
         f"{accuracy:.6f}")
@@ -73,7 +74,11 @@ def experiment(seed):
     print(f"  {split}: predicate {scores[split][0]:.4f}, "
           f"value bottleneck {scores[split][1]:.4f}")
   print(f"  ({time.time() - start:.1f}s)")
-  return scores
+  params = {f"predicate_{key}": value
+            for key, value in predicate_params.items()}
+  params |= {f"bottleneck_{key}": value
+             for key, value in bottleneck_params.items()}
+  return scores, params
 
 
 def main(seeds=(0, 1, 2)):
@@ -81,9 +86,11 @@ def main(seeds=(0, 1, 2)):
   print(f"\nover seeds {seeds}, mean +- std of 100 * score:")
   for split in SPLITS:
     for index, name in enumerate(['predicate', 'value bottleneck']):
-      values = 100 * np.array([result[split][index] for result in results])
+      values = 100 * np.array(
+          [scores[split][index] for scores, _ in results])
       print(f"  {split} {name}: {values.mean():.2f} +- {values.std():.2f}")
   print(f"\npublished baseline: {BASELINE}")
+  lake.save_runs('minimum', seeds, results)
 
 
 if __name__ == '__main__':

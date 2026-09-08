@@ -19,6 +19,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from goi import adapter
+from goi import lake
 from goi import lcs
 from goi import minimum
 
@@ -76,15 +77,16 @@ def experiment(seed, steps=30000, batch_size=128, tail=10000):
     scores[split] = adapter.score_categorical(f, 'b', lcs.predictions(f, b))
     print(f"  {split}: {scores[split]:.4f}")
   print(f"  ({time.time() - start:.1f}s)")
-  return scores
+  return scores, params
 
 
 def main(seeds=(0, 1, 2)):
   results = [experiment(seed) for seed in seeds]
   print(f"\nover seeds {seeds}, mean +- std of 100 * score:")
   for split in SPLITS:
-    values = 100 * np.array([result[split] for result in results])
+    values = 100 * np.array([scores[split] for scores, _ in results])
     print(f"  {split}: {values.mean():.2f} +- {values.std():.2f}")
+  lake.save_runs('lcs_length', seeds, results)
 
 
 if __name__ == '__main__':
