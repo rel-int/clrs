@@ -24,10 +24,12 @@ class Bucket:
     return {'Body': io.BytesIO(self.objects[Bucket, Key])}
 
 
-SCRATCH = {'AWS_ACCESS_KEY_ID': 'k', 'AWS_ENDPOINT_URL_S3': 'https://r2',
+SCRATCH = {'AWS_ACCESS_KEY_ID': 'k', 'AWS_SECRET_ACCESS_KEY': 's',
+           'AWS_ENDPOINT_URL_S3': 'https://r2',
            'RELINT_BUCKET': 'rel-int-scratch',
            'RELINT_SCRATCH_PREFIX': 'scratch/a_b.ai/'}
-CURATOR = {'AWS_ACCESS_KEY_ID': 'k', 'AWS_ENDPOINT_URL_S3': 'https://r2',
+CURATOR = {'AWS_ACCESS_KEY_ID': 'k', 'AWS_SECRET_ACCESS_KEY': 's',
+           'AWS_ENDPOINT_URL_S3': 'https://r2',
            'RELINT_BUCKET': 'rel-int-data'}
 
 
@@ -57,11 +59,32 @@ class LakeTest(absltest.TestCase):
     np.testing.assert_array_equal(loaded['w1'], params['w1'])
     np.testing.assert_array_equal(loaded['b1'], params['b1'])
 
+  def test_save_runs_configured(self):
+    bucket = Bucket()
+    results = [({'val (n=16)': 1.0}, {'w': np.zeros(2)}),
+               ({'val (n=16)': 0.5}, {'w': np.ones(2)})]
+    with mock.patch.dict(os.environ, SCRATCH, clear=True):
+      with mock.patch('builtins.print') as fake_print:
+        keys = lake.save_runs('minimum', (0, 1), results, s3=bucket)
+      self.assertLen(keys, 4)
+      self.assertLen(bucket.objects, 4)
+      record, params = lake.load('minimum', 1, lake.git_sha(), s3=bucket)
+    self.assertEqual(record['scores'], {'val (n=16)': 0.5})
+    np.testing.assert_array_equal(params['w'], np.ones(2))
+    self.assertEqual(fake_print.call_count, 4)
+    self.assertIn('r2://rel-int-scratch/', fake_print.call_args[0][0])
+
   def test_unconfigured_saves_nothing_and_says_so(self):
     with mock.patch.dict(os.environ, {}, clear=True):
       with mock.patch('builtins.print') as fake_print:
         self.assertEqual(lake.save_runs('minimum', (0,), [({}, {})]), [])
     self.assertIn('setup.py', fake_print.call_args[0][0])
+
+  def test_partial_credential_is_not_configured(self):
+    partial = {key: value for key, value in SCRATCH.items()
+               if key != 'AWS_SECRET_ACCESS_KEY'}
+    with mock.patch.dict(os.environ, partial, clear=True):
+      self.assertFalse(lake.configured())
 
 
 if __name__ == '__main__':

@@ -70,8 +70,9 @@ and the date is the version key, as `rel-int/infra`'s `datasets.toml` keys every
 
 For a run that needs a GPU or more wall-clock than a sandbox gives: marimohub
 (`MARIMOHUB_TOKEN`, delivered by the exchange above) runs notebooks, and Modal runs scripts —
-`MODAL_TOKEN_ID`/`MODAL_TOKEN_SECRET` in the environment and `modal[api-proxy-support]` installed,
-as `toumix/ARC-AGI`'s launcher does. Neither has been needed here yet.
+`MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` and `MODAL_ENVIRONMENT=notebooks` in the environment and
+`modal[api-proxy-support]` installed, as `toumix/ARC-AGI`'s launcher does. Neither has been needed
+here yet.
 
 ## Never
 

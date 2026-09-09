@@ -37,8 +37,8 @@ SETUP = ('curl -H "Authorization: Bearer $RELINT_TOKEN" '
 def configured():
   """Whether the environment carries a lake credential at all."""
   return all(name in os.environ
-             for name in ('AWS_ACCESS_KEY_ID', 'AWS_ENDPOINT_URL_S3',
-                          'RELINT_BUCKET'))
+             for name in ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY',
+                          'AWS_ENDPOINT_URL_S3', 'RELINT_BUCKET'))
 
 
 def git_sha():
